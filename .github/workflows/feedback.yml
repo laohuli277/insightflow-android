@@ -1,0 +1,41 @@
+name: Archive app feedback
+on:
+  push:
+    branches: [main]
+    paths: ['scripts/feedback-reconcile.mjs', '.github/workflows/feedback.yml']
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+  id-token: write
+concurrency:
+  group: feedback-reconcile
+  cancel-in-progress: false
+jobs:
+  verify-endpoint:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Verify anonymous service from the intended cloud network
+        run: |
+          node --input-type=module <<'JS'
+          const r = await fetch('https://insightflow-feedback-hub.lustrousaccordion2.chatgpt.site/health', {signal: AbortSignal.timeout(20000)});
+          if (!r.ok) throw Error('Anonymous feedback health check failed: ' + r.status);
+          const health = await r.json();
+          if (!health.ready) throw Error('Feedback database or runtime configuration is missing');
+          console.log(JSON.stringify({service: health.service, ready: health.ready}));
+          JS
+  reconcile:
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Load the exact reviewed workflow script
+        run: curl --fail --show-error --silent "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$GITHUB_SHA/scripts/feedback-reconcile.mjs" -o /tmp/if-feedback.mjs
+      - name: Archive received feedback
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node /tmp/if-feedback.mjs
