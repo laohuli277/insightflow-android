@@ -6,6 +6,11 @@ on:
   schedule:
     - cron: '*/5 * * * *'
   workflow_dispatch:
+    inputs:
+      smoke_test:
+        description: 'Create one clearly marked synthetic feedback and verify its receipt'
+        type: boolean
+        default: false
 permissions:
   contents: read
   issues: write
@@ -38,4 +43,5 @@ jobs:
       - name: Archive received feedback
         env:
           GH_TOKEN: ${{ github.token }}
+          IF_ACCEPTANCE_SMOKE: ${{ inputs.smoke_test }}
         run: node /tmp/if-feedback.mjs
