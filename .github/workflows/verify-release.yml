@@ -1,0 +1,33 @@
+name: Verify public Android download
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+permissions:
+  contents: read
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check anonymous release metadata, manifest and APK
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import {createHash} from 'node:crypto';
+          const repo='laohuli277/insightflow-android';
+          const get=async url=>{const r=await fetch(url,{signal:AbortSignal.timeout(60000)});assert.equal(r.status,200,'anonymous download status');return r;};
+          const latest=await (await get('https://api.github.com/repos/'+repo+'/releases/latest')).json();
+          assert.equal(latest.draft,false);assert.equal(latest.prerelease,false);
+          const apk=latest.assets.find(x=>x.name==='insightflow-android.apk');
+          const info=latest.assets.find(x=>x.name==='release.json');
+          assert.ok(apk&&info,'required named assets');
+          for(const a of [apk,info])assert.ok(a.browser_download_url.startsWith('https://github.com/'+repo+'/releases/download/'+latest.tag_name+'/'));
+          const manifest=await(await get(info.browser_download_url)).json();
+          assert.equal(manifest.packageName,'cn.insightflow.app');assert.equal(latest.tag_name,'v'+manifest.versionName);
+          const bytes=Buffer.from(await(await get(apk.browser_download_url)).arrayBuffer());
+          assert.equal(bytes.length,manifest.size);assert.equal(bytes.length,apk.size);
+          const sha256=createHash('sha256').update(bytes).digest('hex');
+          assert.equal(sha256,manifest.sha256);assert.equal(apk.digest,'sha256:'+sha256);
+          console.log(JSON.stringify({publicDownload:'passed',version:manifest.versionName,versionCode:manifest.versionCode,size:bytes.length,sha256}));
+          JS
